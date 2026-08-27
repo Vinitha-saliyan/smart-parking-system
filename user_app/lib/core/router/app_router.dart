@@ -7,6 +7,8 @@ import 'package:smart_parking_user/ui/auth/login_screen.dart';
 import 'package:smart_parking_user/ui/auth/register_screen.dart';
 import 'package:smart_parking_user/ui/dashboard/dashboard_screen.dart';
 import 'package:smart_parking_user/ui/notifications/notifications_screen.dart';
+import 'package:smart_parking_user/data/models/reservation_model.dart';
+import 'package:smart_parking_user/ui/navigation/indoor_navigation_screen.dart';
 import 'package:smart_parking_user/ui/parking_map/parking_map_screen.dart';
 import 'package:smart_parking_user/ui/payment/payment_screen.dart';
 import 'package:smart_parking_user/ui/profile/history_screen.dart';
@@ -140,6 +142,25 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/reservations',
                 builder: (context, state) => const ReservationScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'navigate',
+                    builder: (context, state) {
+                      final reservation = state.extra;
+                      if (reservation is! ReservationModel) {
+                        return const Scaffold(
+                          body: Center(
+                            child: Text('Navigation details are unavailable.'),
+                          ),
+                        );
+                      }
+
+                      return IndoorNavigationScreen(
+                        reservation: reservation,
+                      );
+                    },
+                  ),
+                ],
               ),
             ],
           ),

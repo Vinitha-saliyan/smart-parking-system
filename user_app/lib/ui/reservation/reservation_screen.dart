@@ -12,7 +12,6 @@ import 'package:smart_parking_user/domain/providers/reservation_provider.dart';
 import 'package:smart_parking_user/ui/payment/payment_screen.dart';
 import 'package:smart_parking_user/ui/reservation/widgets/countdown_timer.dart';
 import 'package:smart_parking_user/ui/reservation/widgets/parking_elapsed_timer.dart';
-import 'package:smart_parking_user/ui/reservation/widgets/qr_display.dart';
 import 'package:smart_parking_user/ui/reservation/widgets/reservation_card.dart';
 
 class ReservationScreen extends ConsumerStatefulWidget {
@@ -63,41 +62,15 @@ class _ReservationScreenState extends ConsumerState<ReservationScreen> {
         const SnackBar(content: Text('Reservation cancelled')),
       );
       await _onRefresh();
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.toString()),
+          content: const Text(
+              'Unable to cancel this reservation. Please try again.'),
           backgroundColor: AppColors.error,
         ),
       );
-    }
-  }
-
-  Future<void> _startParking(ReservationModel reservation) async {
-    if (_isActionLoading) return;
-    setState(() => _isActionLoading = true);
-
-    try {
-      await ref.read(reservationRepositoryProvider).checkIn(reservation.id);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Parking timer started from 00:00:01.'),
-          backgroundColor: AppColors.success,
-        ),
-      );
-      await _onRefresh();
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.toString()),
-          backgroundColor: AppColors.error,
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _isActionLoading = false);
     }
   }
 
@@ -127,12 +100,12 @@ class _ReservationScreenState extends ConsumerState<ReservationScreen> {
       );
       if (!mounted) return;
       await _onRefresh();
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
       setState(() => _isActionLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.toString()),
+          content: const Text('Unable to complete checkout. Please try again.'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -185,7 +158,9 @@ class _ReservationScreenState extends ConsumerState<ReservationScreen> {
                   ShimmerLoading.card(height: 300),
                 ],
               ),
-              error: (error, _) => Center(child: Text('Error: $error')),
+              error: (error, _) => _buildLoadError(
+                'Unable to load your active booking.',
+              ),
             ),
             const SizedBox(height: 40),
             Text(
@@ -237,7 +212,9 @@ class _ReservationScreenState extends ConsumerState<ReservationScreen> {
                   child: ShimmerLoading(width: double.infinity, height: 120),
                 ),
               ),
-              error: (error, _) => Center(child: Text('Error: $error')),
+              error: (error, _) => _buildLoadError(
+                'Unable to load past bookings.',
+              ),
             ),
           ],
         ),
@@ -255,23 +232,32 @@ class _ReservationScreenState extends ConsumerState<ReservationScreen> {
   Widget _buildAdvancePayment(ReservationModel reservation) {
     return Column(
       children: [
+        _statusIcon(
+          icon: Icons.lock_outline_rounded,
+          color: AppColors.primary,
+        ),
+        const SizedBox(height: 18),
         Text(
-          '₹10 Reservation Advance',
-          style: context.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
+          'Complete Your Reservation',
+          textAlign: TextAlign.center,
+          style: context.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w800,
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 8),
+        const Text(
+          'Pay the ₹10 advance to confirm the selected slot.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppColors.textSecondaryDark),
+        ),
+        const SizedBox(height: 22),
+        _bookingSummaryCard(reservation),
+        const SizedBox(height: 20),
         CountdownTimer(
           targetTime: _entryDeadline(reservation),
           onExpire: _onRefresh,
         ),
-        const SizedBox(height: 24),
-        const Text(
-          'Pay ₹10 to reserve this slot. The advance is deducted from your final bill and is non-refundable.',
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 22),
         GradientButton(
           text: 'Pay ₹10 Advance',
           icon: Icons.payment,
@@ -296,43 +282,42 @@ class _ReservationScreenState extends ConsumerState<ReservationScreen> {
   }
 
   Widget _buildWaitingForEntry(ReservationModel reservation) {
+    final slotLabel = _slotLabel(reservation);
     return Column(
       children: [
+        _statusIcon(
+          icon: Icons.check_rounded,
+          color: AppColors.success,
+        ),
+        const SizedBox(height: 18),
         Text(
-          'Reserved — Enter Within 30 Minutes',
+          'Booking Confirmed',
           textAlign: TextAlign.center,
-          style: context.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
+          style: context.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w800,
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 8),
+        const Text(
+          'Your ₹10 advance is paid. Enter before the hold expires.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppColors.textSecondaryDark),
+        ),
+        const SizedBox(height: 22),
+        _bookingSummaryCard(reservation),
+        const SizedBox(height: 18),
         CountdownTimer(
           targetTime: _entryDeadline(reservation),
           onExpire: _onRefresh,
         ),
-        const SizedBox(height: 28),
-        QrDisplay(
-          qrData: reservation.qrCode ?? reservation.id,
-          reservationId: reservation.id.substring(0, 8).toUpperCase(),
-        ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 22),
         GradientButton(
-          text: 'I Have Parked — Start Timer',
-          icon: Icons.timer_outlined,
-          isLoading: _isActionLoading,
-          onPressed: _isActionLoading ? null : () => _startParking(reservation),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Press only after your vehicle is in the allotted space.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey, fontSize: 12),
-        ),
-        const SizedBox(height: 16),
-        GradientButton(
-          text: 'Navigate to Parking',
-          icon: Icons.navigation,
-          onPressed: () {},
+          text: 'Navigate to Slot $slotLabel',
+          icon: Icons.navigation_rounded,
+          onPressed: () => context.push(
+            '/reservations/navigate',
+            extra: reservation,
+          ),
         ),
         const SizedBox(height: 16),
         TextButton(
@@ -354,17 +339,39 @@ class _ReservationScreenState extends ConsumerState<ReservationScreen> {
 
     return Column(
       children: [
-        Text(
-          'Parking Session Active',
-          style: context.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.success.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.success.withOpacity(0.4)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.check_circle_rounded,
+                color: AppColors.success,
+                size: 18,
+              ),
+              const SizedBox(width: 7),
+              Text(
+                'Vehicle checked in · ${_slotLabel(reservation)}',
+                style: const TextStyle(
+                  color: AppColors.success,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 18),
+        _bookingSummaryCard(reservation),
+        const SizedBox(height: 18),
         ParkingElapsedTimer(checkInTime: checkInTime),
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
         GradientButton(
-          text: 'Check Out & Calculate Bill',
+          text: 'End Parking & Pay',
           icon: Icons.exit_to_app,
           isLoading: _isActionLoading,
           onPressed:
@@ -380,13 +387,23 @@ class _ReservationScreenState extends ConsumerState<ReservationScreen> {
 
     return Column(
       children: [
+        _statusIcon(
+          icon: Icons.payments_outlined,
+          color: AppColors.warning,
+        ),
+        const SizedBox(height: 18),
         Text(
-          'Final Payment Required',
-          style: context.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
+          'Complete Your Checkout',
+          style: context.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w800,
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 8),
+        const Text(
+          'The parking timer has stopped.',
+          style: TextStyle(color: AppColors.textSecondaryDark),
+        ),
+        const SizedBox(height: 20),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(20),
@@ -407,7 +424,7 @@ class _ReservationScreenState extends ConsumerState<ReservationScreen> {
         ),
         const SizedBox(height: 16),
         const Text(
-          'Your parking timer has stopped. The slot remains occupied until the final payment is verified.',
+          'The slot remains occupied until the final payment is verified.',
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 24),
@@ -454,6 +471,101 @@ class _ReservationScreenState extends ConsumerState<ReservationScreen> {
             text: 'Find Parking',
             icon: Icons.search,
             onPressed: () => context.go('/search'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bookingSummaryCard(ReservationModel reservation) {
+    final floor = reservation.slotDetails?.floor ?? 1;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: const Icon(
+              Icons.local_parking_rounded,
+              color: AppColors.primaryLight,
+              size: 30,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  reservation.areaName ?? 'Smart Parking',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'Slot ${_slotLabel(reservation)} · Floor $floor',
+                  style: const TextStyle(
+                    color: AppColors.textSecondaryDark,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusIcon({required IconData icon, required Color color}) {
+    return Container(
+      width: 82,
+      height: 82,
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        shape: BoxShape.circle,
+        border: Border.all(color: color.withOpacity(0.45), width: 2),
+      ),
+      child: Icon(icon, color: color, size: 44),
+    );
+  }
+
+  String _slotLabel(ReservationModel reservation) {
+    return reservation.slotDetails?.slotId ?? reservation.slotId;
+  }
+
+  Widget _buildLoadError(String message) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.cloud_off_rounded, color: AppColors.warning),
+          const SizedBox(height: 10),
+          Text(message, textAlign: TextAlign.center),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _onRefresh,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Try Again'),
           ),
         ],
       ),

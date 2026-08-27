@@ -18,7 +18,7 @@ class SettingsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          _buildSectionHeader('Preferences'),
+          _buildSectionHeader('Appearance'),
           _buildSettingTile(
             context: context,
             title: 'Dark Mode',
@@ -31,56 +31,26 @@ class SettingsScreen extends ConsumerWidget {
               activeColor: AppColors.primary,
             ),
           ),
-          _buildSettingTile(
-            context: context,
-            title: 'Language',
-            icon: Icons.language,
-            trailing: const Row(
-              mainAxisSize: MainAxisSize.min,
+          const SizedBox(height: 28),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Theme.of(context).dividerColor),
+            ),
+            child: const Row(
               children: [
-                Text('English', style: TextStyle(color: Colors.grey)),
-                SizedBox(width: 8),
-                Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                Icon(Icons.info_outline_rounded, color: AppColors.primary),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Only settings that are fully available are shown here.',
+                    style: TextStyle(color: AppColors.textSecondaryDark),
+                  ),
+                ),
               ],
             ),
-          ),
-          const SizedBox(height: 24),
-          _buildSectionHeader('Notifications'),
-          _buildSettingTile(
-            context: context,
-            title: 'Push Notifications',
-            icon: Icons.notifications_active_outlined,
-            trailing: Switch(
-              value: true,
-              onChanged: (val) {},
-              activeColor: AppColors.primary,
-            ),
-          ),
-          _buildSettingTile(
-            context: context,
-            title: 'Email Updates',
-            icon: Icons.email_outlined,
-            trailing: Switch(
-              value: false,
-              onChanged: (val) {},
-              activeColor: AppColors.primary,
-            ),
-          ),
-          const SizedBox(height: 24),
-          _buildSectionHeader('Security & Account'),
-          _buildSettingTile(
-            context: context,
-            title: 'Change Password',
-            icon: Icons.lock_outline,
-            onTap: () {},
-          ),
-          _buildSettingTile(
-            context: context,
-            title: 'Delete Account',
-            icon: Icons.delete_outline,
-            iconColor: AppColors.error,
-            textColor: AppColors.error,
-            onTap: () {},
           ),
           const SizedBox(height: 40),
           const Center(
@@ -114,9 +84,6 @@ class SettingsScreen extends ConsumerWidget {
     required String title,
     required IconData icon,
     Widget? trailing,
-    VoidCallback? onTap,
-    Color? iconColor,
-    Color? textColor,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -132,20 +99,15 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
       child: ListTile(
-        onTap: onTap,
-        leading: Icon(icon, color: iconColor ?? AppColors.primary),
+        leading: Icon(icon, color: AppColors.primary),
         title: Text(
           title,
           style: TextStyle(
             fontWeight: FontWeight.w500,
-            color: textColor ?? Theme.of(context).textTheme.bodyLarge?.color,
+            color: Theme.of(context).textTheme.bodyLarge?.color,
           ),
         ),
-        trailing: trailing ??
-            (onTap != null
-                ? const Icon(Icons.arrow_forward_ios,
-                    size: 16, color: Colors.grey)
-                : null),
+        trailing: trailing,
       ),
     );
   }

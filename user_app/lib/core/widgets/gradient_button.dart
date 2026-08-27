@@ -59,9 +59,9 @@ class _GradientButtonState extends State<GradientButton>
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 300),
           width: double.infinity,
-          height: 56,
+          height: 58,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
             gradient: widget.onPressed == null
                 ? LinearGradient(
                     colors: [Colors.grey.shade400, Colors.grey.shade500])
@@ -70,8 +70,8 @@ class _GradientButtonState extends State<GradientButton>
               if (widget.onPressed != null)
                 BoxShadow(
                   color: AppColors.primary.withOpacity(0.3),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
                 ),
             ],
           ),
@@ -95,7 +95,7 @@ class _GradientButtonState extends State<GradientButton>
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ],

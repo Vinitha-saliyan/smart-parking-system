@@ -15,11 +15,9 @@ class FloorSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (totalFloors <= 1) return const SizedBox.shrink();
-
     return Container(
-      height: 50,
-      margin: const EdgeInsets.symmetric(vertical: 8),
+      height: 46,
+      margin: const EdgeInsets.symmetric(vertical: 10),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: totalFloors,
@@ -38,7 +36,7 @@ class FloorSelector extends StatelessWidget {
                 color: isSelected
                     ? AppColors.primary
                     : Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(25),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(
                   color: isSelected
                       ? AppColors.primary

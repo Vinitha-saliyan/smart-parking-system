@@ -29,10 +29,16 @@ class SlotDetailSheet extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        color: Theme.of(context).cardColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        14,
+        20,
+        20 + MediaQuery.paddingOf(context).bottom,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -47,30 +53,32 @@ class SlotDetailSheet extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 18),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Slot ${slot.slotId}',
-                    style: const TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Outfit',
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Slot ${slot.slotId}',
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Outfit',
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    areaName,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey,
+                    const SizedBox(height: 4),
+                    Text(
+                      areaName,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               Container(
                 padding:
@@ -90,26 +98,41 @@ class SlotDetailSheet extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
           Row(
             children: [
-              _buildInfoItem(
-                  context, 'Type', domainType.label, domainType.icon),
-              const SizedBox(width: 32),
-              _buildInfoItem(
-                context,
-                'Rate',
-                '₹20 first hour',
-                Icons.payments,
+              Expanded(
+                child: _buildInfoItem(
+                  context,
+                  'Type',
+                  domainType.label,
+                  domainType.icon,
+                ),
               ),
-              const SizedBox(width: 32),
-              _buildInfoItem(context, 'Floor', '${slot.floor}', Icons.layers),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildInfoItem(
+                  context,
+                  'Rate',
+                  '₹20 / first hr',
+                  Icons.payments_outlined,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildInfoItem(
+                  context,
+                  'Floor',
+                  '${slot.floor}',
+                  Icons.layers_outlined,
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
           if (domainStatus == DomainSlotStatus.vacant)
             GradientButton(
-              text: 'Reserve This Slot',
+              text: 'Reserve ${slot.slotId} · Pay ₹10',
               isLoading: isReserving,
               onPressed: onReserve,
             )
@@ -138,26 +161,41 @@ class SlotDetailSheet extends StatelessWidget {
 
   Widget _buildInfoItem(
       BuildContext context, String label, String value, IconData icon) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 16, color: Colors.grey),
-            const SizedBox(width: 4),
-            Text(label,
-                style: const TextStyle(color: Colors.grey, fontSize: 12)),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
+    return Container(
+      constraints: const BoxConstraints(minHeight: 78),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.primary.withOpacity(0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 15, color: AppColors.primaryLight),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  label,
+                  style: const TextStyle(color: Colors.grey, fontSize: 11),
+                ),
+              ),
+            ],
           ),
-        ),
-      ],
+          const SizedBox(height: 7),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

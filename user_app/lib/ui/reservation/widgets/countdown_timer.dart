@@ -63,35 +63,52 @@ class _CountdownTimerState extends State<CountdownTimer> {
     final minutes = _remaining.inMinutes.toString().padLeft(2, '0');
     final seconds = (_remaining.inSeconds % 60).toString().padLeft(2, '0');
 
-    return CircularPercentIndicator(
-      radius: 60.0,
-      lineWidth: 10.0,
-      percent: percentage,
-      center: Column(
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            '$minutes:$seconds',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
+          CircularPercentIndicator(
+            radius: 42.0,
+            lineWidth: 8.0,
+            percent: percentage,
+            center: Icon(Icons.timer_outlined, color: color, size: 28),
+            progressColor: color,
+            backgroundColor: color.withOpacity(0.2),
+            circularStrokeCap: CircularStrokeCap.round,
+            animation: true,
+            animateFromLastPercent: true,
           ),
-          const Text(
-            'Remaining',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey,
-            ),
+          const SizedBox(width: 18),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$minutes:$seconds',
+                style: TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                ),
+              ),
+              const SizedBox(height: 3),
+              const Text(
+                'Entry time remaining',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondaryDark,
+                ),
+              ),
+            ],
           ),
         ],
       ),
-      progressColor: color,
-      backgroundColor: color.withOpacity(0.2),
-      circularStrokeCap: CircularStrokeCap.round,
-      animation: true,
-      animateFromLastPercent: true,
     );
   }
 }

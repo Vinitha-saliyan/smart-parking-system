@@ -94,7 +94,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      _showMessage(error.toString(), isError: true);
+      _showMessage(_friendlyPaymentError(error), isError: true);
     }
   }
 
@@ -124,14 +124,14 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       _showMessage(
         widget.args.isSettlement
             ? 'Final payment verified. Checkout is complete.'
-            : '₹10 advance verified. Your parking QR is ready.',
+            : '₹10 advance verified. Your booking is confirmed.',
       );
       context.go('/reservations');
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
       setState(() => _isLoading = false);
       _showMessage(
-        'Payment was received but verification failed: $error',
+        'Payment was received, but confirmation is still pending. Please refresh your booking before trying again.',
         isError: true,
       );
     }
@@ -167,6 +167,21 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     );
   }
 
+  String _friendlyPaymentError(Object error) {
+    final message = error.toString().toLowerCase();
+    if (message.contains('not authenticated') ||
+        message.contains('unauthorized')) {
+      return 'Your session has expired. Please sign in again.';
+    }
+    if (message.contains('razorpay') || message.contains('payment')) {
+      return 'The payment service is temporarily unavailable. Please try again shortly.';
+    }
+    if (message.contains('connection') || message.contains('timeout')) {
+      return 'Unable to connect to the payment service. Check your connection and try again.';
+    }
+    return 'Unable to start payment. Please try again.';
+  }
+
   @override
   Widget build(BuildContext context) {
     final amount = widget.args.amountPaise / 100;
@@ -178,17 +193,37 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
           children: [
-            const Icon(Icons.lock_outline, size: 64, color: AppColors.primary),
-            const SizedBox(height: 20),
+            Center(
+              child: Container(
+                width: 92,
+                height: 92,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: AppColors.primary.withOpacity(0.4),
+                    width: 2,
+                  ),
+                ),
+                child: Icon(
+                  isSettlement
+                      ? Icons.receipt_long_outlined
+                      : Icons.shield_outlined,
+                  size: 48,
+                  color: AppColors.primaryLight,
+                ),
+              ),
+            ),
+            const SizedBox(height: 22),
             Text(
               isSettlement
                   ? 'Complete your checkout'
                   : 'Reserve your parking slot',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w800,
                   ),
             ),
             const SizedBox(height: 12),
@@ -197,45 +232,138 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   ? 'The ₹10 advance has already been deducted. The slot becomes vacant only after this payment is verified.'
                   : 'Pay a non-refundable ₹10 advance. You then have 30 minutes to enter and start parking.',
               textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 32),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(isSettlement ? 'Balance to pay' : 'Advance to pay'),
-                    Text(
-                      '₹${amount.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  ],
-                ),
+              style: const TextStyle(
+                color: AppColors.textSecondaryDark,
+                height: 1.45,
               ),
             ),
-            const SizedBox(height: 32),
+            if (!isSettlement) ...[
+              const SizedBox(height: 24),
+              const _PaymentProgress(),
+            ],
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Theme.of(context).dividerColor),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(isSettlement ? 'Balance to pay' : 'Advance to pay'),
+                  Text(
+                    '₹${amount.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primaryLight,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
             GradientButton(
-              text: 'Pay with Razorpay',
+              text: isSettlement
+                  ? 'Pay Final Balance Securely'
+                  : 'Pay Securely with Razorpay',
               icon: Icons.payment,
               isLoading: _isLoading,
               onPressed: _isLoading ? null : _startCheckout,
             ),
-            const SizedBox(height: 16),
-            TextButton(
-              onPressed: _isLoading ? null : () => context.pop(),
-              child: Text(
-                isSettlement
-                    ? 'Return to booking'
-                    : 'Pay later (before hold expires)',
-              ),
+            const SizedBox(height: 18),
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.verified_user_outlined,
+                  color: AppColors.success,
+                  size: 17,
+                ),
+                SizedBox(width: 7),
+                Text(
+                  'Secure payment · Verified by backend',
+                  style: TextStyle(
+                    color: AppColors.textSecondaryDark,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ),
+            if (isSettlement) ...[
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _isLoading ? null : () => context.pop(),
+                child: const Text('Return to booking'),
+              ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PaymentProgress extends StatelessWidget {
+  const _PaymentProgress();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _step('1', 'Slot', true),
+        _line(true),
+        _step('2', 'Payment', true),
+        _line(false),
+        _step('3', 'Confirmed', false),
+      ],
+    );
+  }
+
+  Widget _line(bool active) {
+    return Expanded(
+      child: Container(
+        height: 2,
+        color: active ? AppColors.primary : AppColors.borderDark,
+      ),
+    );
+  }
+
+  Widget _step(String number, String label, bool active) {
+    return SizedBox(
+      width: 68,
+      child: Column(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: active ? AppColors.primary : Colors.transparent,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: active ? AppColors.primary : AppColors.borderDark,
+              ),
+            ),
+            child: Text(
+              number,
+              style: TextStyle(
+                color: active ? Colors.white : AppColors.textSecondaryDark,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textSecondaryDark,
+              fontSize: 11,
+            ),
+          ),
+        ],
       ),
     );
   }

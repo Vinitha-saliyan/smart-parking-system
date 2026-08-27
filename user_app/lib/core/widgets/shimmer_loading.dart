@@ -63,17 +63,30 @@ class ShimmerLoading extends StatelessWidget {
     final baseColor = isDark ? Colors.grey[800]! : Colors.grey[300]!;
     final highlightColor = isDark ? Colors.grey[700]! : Colors.grey[100]!;
 
-    return Shimmer.fromColors(
-      baseColor: baseColor,
-      highlightColor: highlightColor,
-      child: Container(
-        width: width,
-        height: height,
-        decoration: BoxDecoration(
-          color: baseColor,
-          borderRadius: BorderRadius.circular(borderRadius),
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final resolvedWidth = width.isInfinite
+            ? (constraints.hasBoundedWidth ? constraints.maxWidth : 280.0)
+            : width;
+        final resolvedHeight = height.isInfinite
+            ? (constraints.hasBoundedHeight ? constraints.maxHeight : 120.0)
+            : height;
+
+        return Shimmer.fromColors(
+          baseColor: baseColor,
+          highlightColor: highlightColor,
+          child: SizedBox(
+            width: resolvedWidth,
+            height: resolvedHeight,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: baseColor,
+                borderRadius: BorderRadius.circular(borderRadius),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

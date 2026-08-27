@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:smart_parking_user/core/constants/app_colors.dart';
-import 'package:smart_parking_user/core/utils/extensions.dart';
 import 'package:smart_parking_user/domain/providers/auth_provider.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -40,6 +39,13 @@ class ProfileScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
+    final displayName = user?.fullName.trim();
+    final name =
+        displayName == null || displayName.isEmpty ? 'User' : displayName;
+    final email = user?.email.trim();
+    final avatarUrl = user?.avatarUrl?.trim();
+    final hasAvatar = avatarUrl != null && avatarUrl.isNotEmpty;
+    final initial = name.substring(0, 1).toUpperCase();
 
     return Scaffold(
       body: CustomScrollView(
@@ -65,15 +71,11 @@ class ProfileScreen extends ConsumerWidget {
                         child: CircleAvatar(
                           radius: 40,
                           backgroundColor: Colors.white.withOpacity(0.2),
-                          backgroundImage: user?.avatarUrl != null
-                              ? NetworkImage(user!.avatarUrl!)
-                              : null,
-                          child: user?.avatarUrl == null
+                          backgroundImage:
+                              hasAvatar ? NetworkImage(avatarUrl!) : null,
+                          child: !hasAvatar
                               ? Text(
-                                  user?.fullName
-                                          .substring(0, 1)
-                                          .toUpperCase() ??
-                                      'U',
+                                  initial,
                                   style: const TextStyle(
                                       fontSize: 32, color: Colors.white),
                                 )
@@ -84,7 +86,7 @@ class ProfileScreen extends ConsumerWidget {
                           .scale(duration: 400.ms, curve: Curves.easeOutBack),
                       const SizedBox(height: 16),
                       Text(
-                        user?.fullName ?? 'User Name',
+                        name,
                         style: const TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
@@ -94,7 +96,9 @@ class ProfileScreen extends ConsumerWidget {
                       ).animate().fadeIn(delay: 100.ms),
                       const SizedBox(height: 4),
                       Text(
-                        user?.email ?? 'user@example.com',
+                        email == null || email.isEmpty
+                            ? 'Email unavailable'
+                            : email,
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.white.withOpacity(0.8),
@@ -111,20 +115,6 @@ class ProfileScreen extends ConsumerWidget {
               padding: const EdgeInsets.all(20.0),
               child: Column(
                 children: [
-                  // Stats Row
-                  Row(
-                    children: [
-                      _buildStatCard(context, 'Total Parkings', '42'),
-                      const SizedBox(width: 16),
-                      _buildStatCard(context, 'Member Since', '2023'),
-                    ],
-                  )
-                      .animate()
-                      .slideY(begin: 0.1, end: 0, delay: 300.ms)
-                      .fadeIn(),
-
-                  const SizedBox(height: 32),
-
                   // Menu Items
                   _buildMenuSection(context, [
                     _buildMenuItem(
@@ -155,26 +145,6 @@ class ProfileScreen extends ConsumerWidget {
                   _buildMenuSection(context, [
                     _buildMenuItem(
                       context,
-                      title: 'Help & Support',
-                      icon: Icons.help_outline,
-                      onTap: () {},
-                    ),
-                    _buildMenuItem(
-                      context,
-                      title: 'About',
-                      icon: Icons.info_outline,
-                      onTap: () {},
-                    ),
-                  ])
-                      .animate()
-                      .slideY(begin: 0.1, end: 0, delay: 500.ms)
-                      .fadeIn(),
-
-                  const SizedBox(height: 24),
-
-                  _buildMenuSection(context, [
-                    _buildMenuItem(
-                      context,
                       title: 'Logout',
                       icon: Icons.logout,
                       textColor: AppColors.error,
@@ -192,45 +162,6 @@ class ProfileScreen extends ConsumerWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildStatCard(BuildContext context, String title, String value) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.grey,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

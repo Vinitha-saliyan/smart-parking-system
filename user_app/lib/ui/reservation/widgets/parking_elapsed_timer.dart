@@ -68,53 +68,77 @@ class _ParkingElapsedTimerState extends State<ParkingElapsedTimer> {
   Widget build(BuildContext context) {
     final checkoutBalance = _totalFee - 10;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.timer_outlined, color: AppColors.success),
-                SizedBox(width: 8),
-                Text(
-                  'Parking time',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
+          decoration: BoxDecoration(
+            color: AppColors.success.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.success.withOpacity(0.45)),
+          ),
+          child: Column(
+            children: [
+              Text(
+                _formattedElapsed,
+                style: const TextStyle(
+                  fontSize: 42,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 2,
+                  color: AppColors.success,
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              _formattedElapsed,
-              style: const TextStyle(
-                fontSize: 38,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 2,
-                color: AppColors.primary,
               ),
-            ),
-            const SizedBox(height: 20),
-            const Divider(),
-            const SizedBox(height: 12),
-            _FeeRow(label: 'Current parking fee', amount: _totalFee),
-            const SizedBox(height: 8),
-            const _FeeRow(label: 'Advance paid', amount: -10),
-            const SizedBox(height: 8),
-            _FeeRow(
-              label: 'Current checkout balance',
-              amount: checkoutBalance,
-              emphasize: true,
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              '₹20 covers the first hour. Each started extra hour adds ₹5.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontSize: 12),
-            ),
-          ],
+              const SizedBox(height: 6),
+              const Text(
+                'Parking time',
+                style: TextStyle(color: AppColors.textSecondaryDark),
+              ),
+            ],
+          ),
         ),
-      ),
+        const SizedBox(height: 14),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Theme.of(context).dividerColor),
+          ),
+          child: Column(
+            children: [
+              const _FeeRow(label: 'First hour', amount: 20),
+              const SizedBox(height: 10),
+              const _FeeRow(
+                  label: 'Each started extra hour', amount: 5, prefix: '+'),
+              const SizedBox(height: 10),
+              _FeeRow(label: 'Current parking fee', amount: _totalFee),
+              const Divider(height: 26),
+              const _FeeRow(label: 'Advance paid', amount: -10),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: _FeeRow(
+                  label: 'Current balance',
+                  amount: checkoutBalance,
+                  emphasize: true,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '₹20 covers the first hour. Each started extra hour adds ₹5.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -124,18 +148,20 @@ class _FeeRow extends StatelessWidget {
     required this.label,
     required this.amount,
     this.emphasize = false,
+    this.prefix = '',
   });
 
   final String label;
   final int amount;
   final bool emphasize;
+  final String prefix;
 
   @override
   Widget build(BuildContext context) {
-    final value = amount < 0 ? '-₹${amount.abs()}' : '₹$amount';
+    final value = amount < 0 ? '-₹${amount.abs()}' : '$prefix₹$amount';
     final style = TextStyle(
       fontWeight: emphasize ? FontWeight.bold : FontWeight.normal,
-      color: emphasize ? AppColors.primary : null,
+      color: emphasize ? AppColors.success : null,
       fontSize: emphasize ? 17 : null,
     );
 

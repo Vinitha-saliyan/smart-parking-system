@@ -285,17 +285,17 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   },
                 );
               },
-              error: (error, stackTrace) {
+              error: (_, __) {
                 return Center(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          error.toString(),
+                        const Text(
+                          'Unable to load parking areas. Check the connection and try again.',
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.error,
                           ),
                         ),

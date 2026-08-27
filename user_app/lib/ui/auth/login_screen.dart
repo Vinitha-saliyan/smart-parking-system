@@ -8,7 +8,6 @@ import 'package:smart_parking_user/core/widgets/glass_card.dart';
 import 'package:smart_parking_user/core/widgets/gradient_button.dart';
 import 'package:smart_parking_user/domain/providers/auth_provider.dart';
 import 'package:smart_parking_user/ui/auth/widgets/auth_text_field.dart';
-import 'package:smart_parking_user/ui/auth/widgets/social_login_button.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -64,14 +63,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         );
       }
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            error.toString().replaceFirst('Exception: ', ''),
-          ),
+        const SnackBar(
+          content: Text('Unable to sign in. Please try again.'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -226,53 +223,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               delay: 500.ms,
                             )
                             .fadeIn(),
-                        const SizedBox(height: 32),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Divider(
-                                color: Colors.white.withOpacity(0.2),
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
-                              child: Text(
-                                'OR',
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.5),
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: Divider(
-                                color: Colors.white.withOpacity(0.2),
-                              ),
-                            ),
-                          ],
-                        ).animate().fadeIn(delay: 600.ms),
-                        const SizedBox(height: 24),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SocialLoginButton(
-                              icon: Icons.g_mobiledata,
-                              iconColor: Colors.red,
-                              onPressed: () {},
-                            ),
-                            const SizedBox(width: 24),
-                            SocialLoginButton(
-                              icon: Icons.apple,
-                              iconColor: Colors.black,
-                              onPressed: () {},
-                            ),
-                          ],
-                        ).animate().scale(
-                              delay: 700.ms,
-                              duration: 400.ms,
-                              curve: Curves.easeOutBack,
-                            ),
+                        const SizedBox(height: 8),
                       ],
                     ),
                   ),

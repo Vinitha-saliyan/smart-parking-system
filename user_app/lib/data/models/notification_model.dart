@@ -1,8 +1,3 @@
-import 'package:json_annotation/json_annotation.dart';
-
-part 'notification_model.g.dart';
-
-@JsonSerializable()
 class NotificationModel {
   final String id;
   final String userId;
@@ -24,7 +19,34 @@ class NotificationModel {
     required this.createdAt,
   });
 
-  factory NotificationModel.fromJson(Map<String, dynamic> json) =>
-      _$NotificationModelFromJson(json);
-  Map<String, dynamic> toJson() => _$NotificationModelToJson(this);
+  factory NotificationModel.fromJson(Map<String, dynamic> json) {
+    return NotificationModel(
+      id: json['id'].toString(),
+      userId: (json['user_id'] ?? json['userId'] ?? '').toString(),
+      title: (json['title'] ?? '').toString(),
+      body: (json['body'] ?? json['message'] ?? '').toString(),
+      type: (json['type'] ?? 'info').toString(),
+      isRead: (json['is_read'] ?? json['isRead'] ?? false) == true,
+      data: json['data'] is Map
+          ? Map<String, dynamic>.from(json['data'] as Map)
+          : null,
+      createdAt: DateTime.tryParse(
+            (json['created_at'] ?? json['createdAt'] ?? '').toString(),
+          ) ??
+          DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'user_id': userId,
+      'title': title,
+      'body': body,
+      'type': type,
+      'is_read': isRead,
+      'data': data,
+      'created_at': createdAt.toIso8601String(),
+    };
+  }
 }

@@ -7,9 +7,17 @@ class NotificationRepository {
   NotificationRepository(this._apiService);
 
   Future<List<NotificationModel>> getNotifications() async {
-    final response = await _apiService.get('/notifications');
-    return (response['data'] as List)
-        .map((json) => NotificationModel.fromJson(json))
+    final response = await _apiService.get('/notifications/');
+    final dynamic payload = response is Map && response['data'] != null
+        ? response['data']
+        : response;
+    if (payload is! List) return const [];
+
+    return payload
+        .whereType<Map>()
+        .map((json) => NotificationModel.fromJson(
+              Map<String, dynamic>.from(json),
+            ))
         .toList();
   }
 

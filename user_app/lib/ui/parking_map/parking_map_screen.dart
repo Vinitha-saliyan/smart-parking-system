@@ -35,6 +35,20 @@ class _ParkingMapScreenState extends ConsumerState<ParkingMapScreen> {
     return status.split('.').last.toUpperCase();
   }
 
+  String _friendlyError(Object error) {
+    final message = error.toString().toLowerCase();
+    if (message.contains('not authenticated') ||
+        message.contains('unauthorized')) {
+      return 'Your session has expired. Please sign in again.';
+    }
+    if (message.contains('cannot reach') ||
+        message.contains('connection') ||
+        message.contains('timeout')) {
+      return 'Unable to connect to parking services. Please try again.';
+    }
+    return 'Something went wrong. Please try again.';
+  }
+
   ParkingAreaModel? _findSelectedArea(
     List<ParkingAreaModel> areas,
   ) {
@@ -167,7 +181,7 @@ class _ParkingMapScreenState extends ConsumerState<ParkingMapScreen> {
                     return;
                   }
 
-                  _showMessage(error.toString());
+                  _showMessage(_friendlyError(error));
                 } finally {
                   if (mounted) {
                     setState(() {
@@ -233,8 +247,8 @@ class _ParkingMapScreenState extends ConsumerState<ParkingMapScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    error.toString(),
+                  const Text(
+                    'Unable to load parking areas.',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: AppColors.error,
@@ -259,7 +273,7 @@ class _ParkingMapScreenState extends ConsumerState<ParkingMapScreen> {
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      title: const Text('Parking Map'),
+      title: const Text('Choose a Parking Slot'),
       leading: widget.areaId != null
           ? IconButton(
               icon: const Icon(Icons.arrow_back),
@@ -292,6 +306,54 @@ class _ParkingMapScreenState extends ConsumerState<ParkingMapScreen> {
       appBar: _buildAppBar(),
       body: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        area.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${area.availableSlots} slots available',
+                        style: const TextStyle(
+                          color: AppColors.success,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    '₹10 advance',
+                    style: TextStyle(
+                      color: AppColors.primaryLight,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
           FloorSelector(
             totalFloors: totalFloors,
             selectedFloor: currentFloor,
@@ -301,6 +363,8 @@ class _ParkingMapScreenState extends ConsumerState<ParkingMapScreen> {
               });
             },
           ),
+          const LegendBar(),
+          const SizedBox(height: 6),
           Expanded(
             child: slotsAsync.when(
               data: (slots) {
@@ -319,60 +383,54 @@ class _ParkingMapScreenState extends ConsumerState<ParkingMapScreen> {
                   );
                 }
 
-                return InteractiveViewer(
-                  minScale: 0.5,
-                  maxScale: 3,
-                  boundaryMargin: const EdgeInsets.all(100),
-                  child: GridView.builder(
-                    padding: const EdgeInsets.all(24),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 4,
-                      childAspectRatio: 0.7,
-                      crossAxisSpacing: 16,
-                      mainAxisSpacing: 16,
-                    ),
-                    itemCount: floorSlots.length,
-                    itemBuilder: (context, index) {
-                      final slot = floorSlots[index];
-
-                      var currentStatus = _normalizeStatus(slot.status);
-
-                      webSocketAsync.whenData((data) {
-                        final eventSlotId = data['slot_id']?.toString();
-
-                        final isSameSlot = eventSlotId == slot.id ||
-                            eventSlotId == slot.slotId;
-
-                        if (isSameSlot && data['status'] != null) {
-                          currentStatus = _normalizeStatus(
-                            data['status'].toString(),
-                          );
-                        }
-                      });
-
-                      return ParkingSlotWidget(
-                        slotId: slot.slotId,
-                        status: DomainSlotStatus.fromString(
-                          currentStatus,
-                        ),
-                        type: DomainSlotType.fromString(
-                          slot.slotType,
-                        ),
-                        onTap: () {
-                          if (currentStatus != 'VACANT') {
-                            _showMessage(
-                              'Only vacant parking slots '
-                              'can be booked.',
-                            );
-                            return;
-                          }
-
-                          _showSlotDetails(slot, area);
-                        },
-                      );
-                    },
+                return GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    childAspectRatio: 0.78,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
                   ),
+                  itemCount: floorSlots.length,
+                  itemBuilder: (context, index) {
+                    final slot = floorSlots[index];
+
+                    var currentStatus = _normalizeStatus(slot.status);
+
+                    webSocketAsync.whenData((data) {
+                      final eventSlotId = data['slot_id']?.toString();
+
+                      final isSameSlot =
+                          eventSlotId == slot.id || eventSlotId == slot.slotId;
+
+                      if (isSameSlot && data['status'] != null) {
+                        currentStatus = _normalizeStatus(
+                          data['status'].toString(),
+                        );
+                      }
+                    });
+
+                    return ParkingSlotWidget(
+                      slotId: slot.slotId,
+                      status: DomainSlotStatus.fromString(
+                        currentStatus,
+                      ),
+                      type: DomainSlotType.fromString(
+                        slot.slotType,
+                      ),
+                      onTap: () {
+                        if (currentStatus != 'VACANT') {
+                          _showMessage(
+                            'Only vacant parking slots '
+                            'can be booked.',
+                          );
+                          return;
+                        }
+
+                        _showSlotDetails(slot, area);
+                      },
+                    );
+                  },
                 );
               },
               loading: () {
@@ -388,8 +446,8 @@ class _ParkingMapScreenState extends ConsumerState<ParkingMapScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          error.toString(),
+                        const Text(
+                          'Unable to load parking slots.',
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             color: AppColors.error,
@@ -412,7 +470,6 @@ class _ParkingMapScreenState extends ConsumerState<ParkingMapScreen> {
               },
             ),
           ),
-          const LegendBar(),
         ],
       ),
     );

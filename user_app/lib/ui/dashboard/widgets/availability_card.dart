@@ -17,30 +17,23 @@ class AvailabilityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    double percentage = totalSlots == 0 ? 0.0 : occupiedSlots / totalSlots;
-    Color indicatorColor = percentage < 0.5
-        ? AppColors.success
-        : (percentage < 0.8 ? AppColors.warning : AppColors.error);
+    final percentage = totalSlots <= 0
+        ? 0.0
+        : (availableSlots / totalSlots).clamp(0.0, 1.0).toDouble();
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           CircularPercentIndicator(
-            radius: 40.0,
-            lineWidth: 8.0,
+            radius: 48.0,
+            lineWidth: 10.0,
             animation: true,
             percent: percentage,
             center: AnimatedCounter(
@@ -50,15 +43,17 @@ class AvailabilityCard extends StatelessWidget {
                   const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             circularStrokeCap: CircularStrokeCap.round,
-            progressColor: indicatorColor,
-            backgroundColor: Colors.grey.withOpacity(0.2),
+            progressColor: AppColors.success,
+            backgroundColor: AppColors.error.withOpacity(0.9),
           ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildStatRow('Available', availableSlots, AppColors.success),
-              const SizedBox(height: 8),
-              _buildStatRow('Occupied', occupiedSlots, AppColors.error),
+              _buildStatRow(
+                  context, 'Available', availableSlots, AppColors.success),
+              const SizedBox(height: 14),
+              _buildStatRow(
+                  context, 'Occupied', occupiedSlots, AppColors.error),
             ],
           ),
         ],
@@ -66,7 +61,12 @@ class AvailabilityCard extends StatelessWidget {
     );
   }
 
-  Widget _buildStatRow(String label, int count, Color color) {
+  Widget _buildStatRow(
+    BuildContext context,
+    String label,
+    int count,
+    Color color,
+  ) {
     return Row(
       children: [
         Container(
@@ -78,11 +78,17 @@ class AvailabilityCard extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 14, color: Colors.grey),
+        SizedBox(
+          width: 78,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              color: Theme.of(context).textTheme.bodySmall?.color,
+            ),
+          ),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 8),
         AnimatedCounter(
           targetValue: count,
           textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),

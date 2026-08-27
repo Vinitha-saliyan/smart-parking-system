@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:smart_parking_user/core/constants/app_colors.dart';
 import 'package:smart_parking_user/core/utils/extensions.dart';
 import 'package:smart_parking_user/core/widgets/shimmer_loading.dart';
 import 'package:smart_parking_user/domain/providers/auth_provider.dart';
+import 'package:smart_parking_user/domain/providers/notification_provider.dart';
 import 'package:smart_parking_user/domain/providers/parking_provider.dart';
 import 'package:smart_parking_user/domain/providers/reservation_provider.dart';
 import 'package:smart_parking_user/ui/dashboard/widgets/active_reservation_card.dart';
@@ -23,6 +25,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Future<void> _onRefresh() async {
     ref.invalidate(parkingAreasProvider);
     ref.invalidate(activeReservationProvider);
+    ref.invalidate(notificationsProvider);
   }
 
   String _getGreeting() {
@@ -37,6 +40,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final user = ref.watch(currentUserProvider);
     final activeReservationAsync = ref.watch(activeReservationProvider);
     final areasAsync = ref.watch(parkingAreasProvider);
+    final hasUnreadNotifications = ref.watch(hasUnreadNotificationsProvider);
 
     return Scaffold(
       body: RefreshIndicator(
@@ -45,51 +49,39 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverAppBar(
-              expandedHeight: 80,
+              expandedHeight: 92,
               floating: true,
               pinned: true,
               backgroundColor: Theme.of(context).scaffoldBackgroundColor,
               flexibleSpace: FlexibleSpaceBar(
-                titlePadding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                titlePadding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
                 title: Row(
                   children: [
-                    CircleAvatar(
-                      radius: 20,
-                      backgroundColor:
-                          Theme.of(context).primaryColor.withOpacity(0.2),
-                      backgroundImage: user?.avatarUrl != null
-                          ? NetworkImage(user!.avatarUrl!)
-                          : null,
-                      child: user?.avatarUrl == null
-                          ? Text(user?.fullName.substring(0, 1).toUpperCase() ??
-                              'U')
-                          : null,
-                    ),
-                    const SizedBox(width: 12),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _getGreeting(),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: context.isDarkMode
-                                ? Colors.grey[400]
-                                : Colors.grey[600],
-                            fontWeight: FontWeight.normal,
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _getGreeting(),
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: context.isDarkMode
+                                  ? Colors.grey[400]
+                                  : Colors.grey[600],
+                              fontWeight: FontWeight.normal,
+                            ),
                           ),
-                        ),
-                        Text(
-                          user?.fullName ?? 'User',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: context.textTheme.titleLarge?.color,
-                            fontWeight: FontWeight.bold,
+                          Text(
+                            user?.fullName ?? 'User',
+                            style: TextStyle(
+                              fontSize: 20,
+                              color: context.textTheme.titleLarge?.color,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -102,18 +94,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       icon: const Icon(Icons.notifications_outlined),
                       onPressed: () => context.push('/notifications'),
                     ),
-                    Positioned(
-                      right: 12,
-                      top: 12,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
+                    if (hasUnreadNotifications)
+                      Positioned(
+                        right: 12,
+                        top: 12,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: AppColors.error,
+                            shape: BoxShape.circle,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
                 const SizedBox(width: 8),
@@ -125,7 +118,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
 
                     // Active Reservation
                     activeReservationAsync.when(
@@ -151,22 +144,52 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       error: (_, __) => const SizedBox.shrink(),
                     ),
 
-                    // Quick Actions
+                    InkWell(
+                      onTap: () => context.go('/search'),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        height: 52,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).cardColor,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Theme.of(context).dividerColor,
+                          ),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.search_rounded,
+                                color: AppColors.textSecondaryDark),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Search parking nearby',
+                                style: TextStyle(
+                                    color: AppColors.textSecondaryDark),
+                              ),
+                            ),
+                            Icon(Icons.tune_rounded,
+                                color: AppColors.textSecondaryDark),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+
                     QuickActions(
                       onFindParking: () => context.go('/search'),
                       onMyBookings: () => context.go('/reservations'),
-                      onScanQR: () => context.go('/reservations'),
-                      onHistory: () => context.go('/profile/history'),
                     )
                         .animate()
                         .fadeIn(delay: 100.ms, duration: 400.ms)
                         .slideY(begin: 0.1, end: 0),
 
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 30),
 
-                    // Live Availability Overview (mocked for total)
+                    // Live availability from the parking-area API.
                     Text(
-                      'City Overview',
+                      'Live Availability',
                       style: context.textTheme.titleLarge
                           ?.copyWith(fontWeight: FontWeight.bold),
                     ).animate().fadeIn(delay: 200.ms),
@@ -190,7 +213,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             .slideX(begin: 0.1, end: 0);
                       },
                       loading: () => ShimmerLoading.card(height: 120),
-                      error: (_, __) => const Text('Failed to load overview'),
+                      error: (_, __) => const Text(
+                        'Availability is temporarily unavailable.',
+                        style: TextStyle(color: AppColors.textSecondaryDark),
+                      ),
                     ),
 
                     const SizedBox(height: 32),
@@ -213,12 +239,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     const SizedBox(height: 16),
 
                     SizedBox(
-                      height: 240,
+                      height: 272,
                       child: areasAsync.when(
                         data: (areas) {
-                          if (areas.isEmpty)
+                          if (areas.isEmpty) {
                             return const Center(
-                                child: Text('No parking areas found'));
+                              child: Text('No parking areas found'),
+                            );
+                          }
                           return ListView.builder(
                             scrollDirection: Axis.horizontal,
                             itemCount: areas.length,
@@ -244,8 +272,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             child: ShimmerLoading.card(height: 240),
                           ),
                         ),
-                        error: (_, __) =>
-                            const Center(child: Text('Error loading areas')),
+                        error: (_, __) => const Center(
+                          child: Text('Unable to load parking areas.'),
+                        ),
                       ),
                     ),
 
