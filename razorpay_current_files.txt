@@ -1,0 +1,1269 @@
+===== BACKEND MAIN =====
+from fastapi import FastAPI
+from contextlib import asynccontextmanager
+import logging
+import asyncio
+
+from app.database import init_db
+from app.utils.redis_client import redis_client
+from app.config import settings
+from app.middleware.cors import setup_cors
+from app.routers import auth_router, parking_router, reservation_router, admin_router, notification_router, websocket_router
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Initializing database...")
+    await init_db()
+    
+    logger.info("Connecting to Redis...")
+    await redis_client.connect(settings.REDIS_URL)
+    
+    logger.info("Application startup complete.")
+    yield
+    
+    logger.info("Application shutdown.")
+
+app = FastAPI(title="AI Smart Parking System API", lifespan=lifespan)
+
+setup_cors(app)
+
+app.include_router(auth_router.router)
+app.include_router(parking_router.router)
+app.include_router(reservation_router.router)
+app.include_router(admin_router.router)
+app.include_router(notification_router.router)
+app.include_router(websocket_router.router)
+
+@app.get("/")
+async def root():
+    return {"message": "Welcome to AI Smart Parking System API"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+===== PAYMENT SCHEMA =====
+from pydantic import BaseModel
+from typing import Optional
+from uuid import UUID
+from datetime import datetime
+from decimal import Decimal
+
+class PaymentCreate(BaseModel):
+    reservation_id: UUID
+    amount: Decimal
+    method: str
+
+class PaymentResponse(BaseModel):
+    id: UUID
+    reservation_id: UUID
+    user_id: UUID
+    amount: Decimal
+    currency: str
+    method: Optional[str] = None
+    status: str
+    transaction_id: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+===== PAYMENT MODEL =====
+import uuid
+from sqlalchemy import Column, String, Numeric, DateTime, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
+from app.database import Base
+
+class Payment(Base):
+    """Payment model."""
+    __tablename__ = "payments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    reservation_id = Column(UUID(as_uuid=True), ForeignKey("reservations.id"))
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    amount = Column(Numeric(10, 2), nullable=False)
+    currency = Column(String(3), default="INR")
+    method = Column(String(20), nullable=True)
+    status = Column(String(20), default="PENDING")
+    transaction_id = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    reservation = relationship("Reservation", back_populates="payment")
+    user = relationship("User", back_populates="payments")
+===== FLUTTER ROUTER =====
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:smart_parking_user/domain/providers/auth_provider.dart';
+import 'package:smart_parking_user/ui/auth/forgot_password_screen.dart';
+import 'package:smart_parking_user/ui/auth/login_screen.dart';
+import 'package:smart_parking_user/ui/auth/register_screen.dart';
+import 'package:smart_parking_user/ui/dashboard/dashboard_screen.dart';
+import 'package:smart_parking_user/ui/notifications/notifications_screen.dart';
+import 'package:smart_parking_user/ui/parking_map/parking_map_screen.dart';
+import 'package:smart_parking_user/ui/profile/history_screen.dart';
+import 'package:smart_parking_user/ui/profile/profile_screen.dart';
+import 'package:smart_parking_user/ui/profile/settings_screen.dart';
+import 'package:smart_parking_user/ui/reservation/reservation_screen.dart';
+import 'package:smart_parking_user/ui/search/search_screen.dart';
+import 'package:smart_parking_user/ui/shared/main_scaffold.dart';
+
+final appRouterProvider = Provider<GoRouter>((ref) {
+  late final GoRouter router;
+
+  router = GoRouter(
+    initialLocation: '/login',
+    redirect: (context, state) {
+      final authState = ref.read(authStateProvider);
+      final location = state.uri.path;
+
+      final isAuthenticated = authState is AuthAuthenticated;
+      final isChecking = authState is AuthInitial || authState is AuthLoading;
+
+      final isPublicAuthPage = location == '/login' ||
+          location == '/register' ||
+          location == '/forgot-password';
+
+      // Keep the user on login/register while an authentication
+      // operation is running.
+      if (isChecking) {
+        if (isPublicAuthPage) {
+          return null;
+        }
+
+        return '/login';
+      }
+
+      // Unauthenticated users can only open authentication pages.
+      if (!isAuthenticated) {
+        if (isPublicAuthPage) {
+          return null;
+        }
+
+        return '/login';
+      }
+
+      // Authenticated users should not return to authentication pages.
+      if (isAuthenticated && (isPublicAuthPage || location == '/')) {
+        return '/dashboard';
+      }
+
+      return null;
+    },
+    routes: [
+      GoRoute(
+        path: '/',
+        redirect: (context, state) => '/login',
+      ),
+      GoRoute(
+        path: '/login',
+        builder: (context, state) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: '/register',
+        builder: (context, state) => const RegisterScreen(),
+      ),
+      GoRoute(
+        path: '/forgot-password',
+        builder: (context, state) => const ForgotPasswordScreen(),
+      ),
+      GoRoute(
+        path: '/notifications',
+        builder: (context, state) => const NotificationsScreen(),
+      ),
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) {
+          return MainScaffold(
+            navigationShell: navigationShell,
+          );
+        },
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/dashboard',
+                builder: (context, state) => const DashboardScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/parking-map',
+                builder: (context, state) => const ParkingMapScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':areaId',
+                    builder: (context, state) {
+                      return ParkingMapScreen(
+                        areaId: state.pathParameters['areaId'],
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/search',
+                builder: (context, state) => const SearchScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/reservations',
+                builder: (context, state) => const ReservationScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/profile',
+                builder: (context, state) => const ProfileScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'settings',
+                    builder: (context, state) => const SettingsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'history',
+                    builder: (context, state) => const HistoryScreen(),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
+
+  // Refresh redirects without rebuilding and resetting the router.
+  ref.listen(authStateProvider, (previous, next) {
+    router.refresh();
+  });
+
+  ref.onDispose(router.dispose);
+
+  return router;
+});
+===== PARKING MAP =====
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:smart_parking_user/core/constants/app_colors.dart';
+import 'package:smart_parking_user/core/widgets/shimmer_loading.dart';
+import 'package:smart_parking_user/data/models/parking_area_model.dart';
+import 'package:smart_parking_user/data/models/parking_slot_model.dart';
+import 'package:smart_parking_user/domain/models/parking_slot.dart';
+import 'package:smart_parking_user/domain/providers/parking_provider.dart';
+import 'package:smart_parking_user/domain/providers/reservation_provider.dart';
+import 'package:smart_parking_user/domain/providers/websocket_provider.dart';
+import 'package:smart_parking_user/ui/parking_map/widgets/floor_selector.dart';
+import 'package:smart_parking_user/ui/parking_map/widgets/legend_bar.dart';
+import 'package:smart_parking_user/ui/parking_map/widgets/parking_slot_widget.dart';
+import 'package:smart_parking_user/ui/parking_map/widgets/slot_detail_sheet.dart';
+
+class ParkingMapScreen extends ConsumerStatefulWidget {
+  final String? areaId;
+
+  const ParkingMapScreen({
+    super.key,
+    this.areaId,
+  });
+
+  @override
+  ConsumerState<ParkingMapScreen> createState() => _ParkingMapScreenState();
+}
+
+class _ParkingMapScreenState extends ConsumerState<ParkingMapScreen> {
+  int _selectedFloor = 1;
+  bool _isReserving = false;
+
+  String _normalizeStatus(String status) {
+    return status.split('.').last.toUpperCase();
+  }
+
+  ParkingAreaModel? _findSelectedArea(
+    List<ParkingAreaModel> areas,
+  ) {
+    if (areas.isEmpty) {
+      return null;
+    }
+
+    // When opened from the bottom navigation, use the first area.
+    if (widget.areaId == null) {
+      return areas.first;
+    }
+
+    for (final area in areas) {
+      if (area.id == widget.areaId) {
+        return area;
+      }
+    }
+
+    return null;
+  }
+
+  void _showMessage(
+    String message, {
+    Color backgroundColor = AppColors.error,
+  }) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: backgroundColor,
+        ),
+      );
+  }
+
+  void _showSlotDetails(
+    ParkingSlotModel slot,
+    ParkingAreaModel area,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (bottomSheetContext) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SlotDetailSheet(
+              slot: slot,
+              areaName: area.name,
+              hourlyRate: area.hourlyRate,
+              currency: area.currency,
+              isReserving: _isReserving,
+              onReserve: () async {
+                if (_isReserving) {
+                  return;
+                }
+
+                if (_normalizeStatus(slot.status) != 'VACANT') {
+                  _showMessage(
+                    'This parking slot is no longer available.',
+                  );
+                  return;
+                }
+
+                if (mounted) {
+                  setState(() {
+                    _isReserving = true;
+                  });
+                }
+
+                if (bottomSheetContext.mounted) {
+                  setModalState(() {});
+                }
+
+                try {
+                  final repository = ref.read(
+                    reservationRepositoryProvider,
+                  );
+
+                  final startTime = DateTime.now();
+                  final endTime = startTime.add(
+                    const Duration(hours: 1),
+                  );
+
+                  await repository.createReservation(
+                    slot.id,
+                    area.id,
+                    startTime,
+                    endTime,
+                  );
+
+                  if (!mounted) {
+                    return;
+                  }
+
+                  // Refresh all data affected by the reservation.
+                  ref.invalidate(activeReservationProvider);
+                  ref.invalidate(reservationsListProvider);
+                  ref.invalidate(
+                    parkingSlotsProvider(area.id),
+                  );
+                  ref.invalidate(parkingAreasProvider);
+
+                  if (bottomSheetContext.mounted) {
+                    Navigator.of(bottomSheetContext).pop();
+                  }
+
+                  if (!mounted) {
+                    return;
+                  }
+
+                  _showMessage(
+                    'Reservation successful!',
+                    backgroundColor: AppColors.success,
+                  );
+
+                  context.go('/reservations');
+                } catch (error) {
+                  if (!mounted) {
+                    return;
+                  }
+
+                  _showMessage(error.toString());
+                } finally {
+                  if (mounted) {
+                    setState(() {
+                      _isReserving = false;
+                    });
+                  }
+
+                  if (bottomSheetContext.mounted) {
+                    setModalState(() {});
+                  }
+                }
+              },
+            );
+          },
+        );
+      },
+    ).whenComplete(() {
+      if (mounted && _isReserving) {
+        setState(() {
+          _isReserving = false;
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final areasAsync = ref.watch(parkingAreasProvider);
+
+    return areasAsync.when(
+      data: (areas) {
+        final selectedArea = _findSelectedArea(areas);
+
+        if (selectedArea == null) {
+          return Scaffold(
+            appBar: _buildAppBar(),
+            body: Center(
+              child: Text(
+                areas.isEmpty
+                    ? 'No parking areas available'
+                    : 'Parking area not found',
+              ),
+            ),
+          );
+        }
+
+        return _buildMap(selectedArea);
+      },
+      loading: () {
+        return Scaffold(
+          appBar: _buildAppBar(),
+          body: const Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
+      },
+      error: (error, stackTrace) {
+        return Scaffold(
+          appBar: _buildAppBar(),
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    error.toString(),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: AppColors.error,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      ref.invalidate(parkingAreasProvider);
+                    },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Try Again'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      title: const Text('Parking Map'),
+      leading: widget.areaId != null
+          ? IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () {
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.go('/dashboard');
+                }
+              },
+            )
+          : null,
+    );
+  }
+
+  Widget _buildMap(ParkingAreaModel area) {
+    final slotsAsync = ref.watch(
+      parkingSlotsProvider(area.id),
+    );
+
+    final webSocketAsync = ref.watch(
+      webSocketProvider(area.id),
+    );
+
+    final totalFloors = area.totalFloors > 0 ? area.totalFloors : 1;
+
+    final currentFloor = _selectedFloor.clamp(1, totalFloors).toInt();
+
+    return Scaffold(
+      appBar: _buildAppBar(),
+      body: Column(
+        children: [
+          FloorSelector(
+            totalFloors: totalFloors,
+            selectedFloor: currentFloor,
+            onFloorSelected: (floor) {
+              setState(() {
+                _selectedFloor = floor;
+              });
+            },
+          ),
+          Expanded(
+            child: slotsAsync.when(
+              data: (slots) {
+                final floorSlots = slots
+                    .where(
+                      (slot) => slot.floor == currentFloor,
+                    )
+                    .toList();
+
+                if (floorSlots.isEmpty) {
+                  return Center(
+                    child: Text(
+                      'No parking slots available on '
+                      'floor $currentFloor',
+                    ),
+                  );
+                }
+
+                return InteractiveViewer(
+                  minScale: 0.5,
+                  maxScale: 3,
+                  boundaryMargin: const EdgeInsets.all(100),
+                  child: GridView.builder(
+                    padding: const EdgeInsets.all(24),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 4,
+                      childAspectRatio: 0.7,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 16,
+                    ),
+                    itemCount: floorSlots.length,
+                    itemBuilder: (context, index) {
+                      final slot = floorSlots[index];
+
+                      var currentStatus = _normalizeStatus(slot.status);
+
+                      webSocketAsync.whenData((data) {
+                        final eventSlotId = data['slot_id']?.toString();
+
+                        final isSameSlot = eventSlotId == slot.id ||
+                            eventSlotId == slot.slotId;
+
+                        if (isSameSlot && data['status'] != null) {
+                          currentStatus = _normalizeStatus(
+                            data['status'].toString(),
+                          );
+                        }
+                      });
+
+                      return ParkingSlotWidget(
+                        slotId: slot.slotId,
+                        status: DomainSlotStatus.fromString(
+                          currentStatus,
+                        ),
+                        type: DomainSlotType.fromString(
+                          slot.slotType,
+                        ),
+                        onTap: () {
+                          if (currentStatus != 'VACANT') {
+                            _showMessage(
+                              'Only vacant parking slots '
+                              'can be booked.',
+                            );
+                            return;
+                          }
+
+                          _showSlotDetails(slot, area);
+                        },
+                      );
+                    },
+                  ),
+                );
+              },
+              loading: () {
+                return ShimmerLoading.grid(
+                  crossAxisCount: 4,
+                  childAspectRatio: 0.7,
+                );
+              },
+              error: (error, stackTrace) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          error.toString(),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: AppColors.error,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            ref.invalidate(
+                              parkingSlotsProvider(area.id),
+                            );
+                          },
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Try Again'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const LegendBar(),
+        ],
+      ),
+    );
+  }
+}
+===== RESERVATION SCREEN =====
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:go_router/go_router.dart';
+import 'package:smart_parking_user/core/constants/app_colors.dart';
+import 'package:smart_parking_user/core/widgets/gradient_button.dart';
+import 'package:smart_parking_user/domain/providers/reservation_provider.dart';
+import 'package:smart_parking_user/ui/reservation/widgets/countdown_timer.dart';
+import 'package:smart_parking_user/ui/reservation/widgets/qr_display.dart';
+import 'package:smart_parking_user/ui/reservation/widgets/reservation_card.dart';
+import 'package:smart_parking_user/core/widgets/shimmer_loading.dart';
+import 'package:smart_parking_user/core/utils/extensions.dart';
+
+class ReservationScreen extends ConsumerStatefulWidget {
+  const ReservationScreen({super.key});
+
+  @override
+  ConsumerState<ReservationScreen> createState() => _ReservationScreenState();
+}
+
+class _ReservationScreenState extends ConsumerState<ReservationScreen> {
+  Future<void> _onRefresh() async {
+    ref.invalidate(activeReservationProvider);
+    ref.invalidate(reservationsListProvider);
+  }
+
+  void _cancelReservation(String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel Reservation'),
+        content: const Text('Are you sure you want to cancel this reservation?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Yes, Cancel', style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await ref.read(reservationRepositoryProvider).cancelReservation(id);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reservation cancelled')),
+        );
+        _onRefresh();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString()), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final activeResAsync = ref.watch(activeReservationProvider);
+    final historyAsync = ref.watch(reservationsListProvider);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('My Bookings'),
+        centerTitle: true,
+      ),
+      body: RefreshIndicator(
+        onRefresh: _onRefresh,
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            activeResAsync.when(
+              data: (activeRes) {
+                if (activeRes == null) {
+                  return _buildEmptyState().animate().fadeIn();
+                }
+                return Column(
+                  children: [
+                    Text(
+                      'Active Reservation',
+                      style: context.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                    ).animate().fadeIn(),
+                    const SizedBox(height: 24),
+                    CountdownTimer(
+                      targetTime: activeRes.startTime.add(const Duration(minutes: 15)),
+                      onExpire: () => _onRefresh(),
+                    ).animate().scale(curve: Curves.elasticOut, duration: 800.ms),
+                    const SizedBox(height: 32),
+                    QrDisplay(
+                      qrData: activeRes.qrCode ?? activeRes.id,
+                      reservationId: activeRes.id.substring(0, 8).toUpperCase(),
+                    ).animate().slideY(begin: 0.2, end: 0, duration: 500.ms),
+                    const SizedBox(height: 24),
+                    GradientButton(
+                      text: 'Navigate to Parking',
+                      icon: Icons.navigation,
+                      onPressed: () {}, // Mock navigation
+                    ).animate().slideY(begin: 0.2, end: 0, delay: 100.ms),
+                    const SizedBox(height: 16),
+                    TextButton(
+                      onPressed: () => _cancelReservation(activeRes.id),
+                      child: const Text('Cancel Reservation', style: TextStyle(color: AppColors.error)),
+                    ).animate().fadeIn(delay: 200.ms),
+                  ],
+                );
+              },
+              loading: () => Column(
+                children: [
+                  const SizedBox(height: 20),
+                  ShimmerLoading.card(height: 200),
+                  const SizedBox(height: 20),
+                  ShimmerLoading.card(height: 300),
+                ],
+              ),
+              error: (e, _) => Center(child: Text('Error: $e')),
+            ),
+            const SizedBox(height: 40),
+            Text(
+              'Past Bookings',
+              style: context.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            historyAsync.when(
+              data: (history) {
+                final past = history.where((r) => r.status != 'ACTIVE' && r.status != 'PENDING').toList();
+                if (past.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.all(32.0),
+                    child: Center(child: Text('No past bookings', style: TextStyle(color: Colors.grey))),
+                  );
+                }
+                return ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: past.length,
+                  itemBuilder: (context, index) {
+                    return ReservationCard(reservation: past[index])
+                        .animate()
+                        .fadeIn(delay: Duration(milliseconds: 100 * index))
+                        .slideX(begin: 0.1, end: 0);
+                  },
+                );
+              },
+              loading: () => ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: 3,
+                itemBuilder: (context, index) => const Padding(
+                  padding: EdgeInsets.only(bottom: 16.0),
+                  child: ShimmerLoading(width: double.infinity, height: 120),
+                ),
+              ),
+              error: (e, _) => Center(child: Text('Error: $e')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 40),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.directions_car, size: 80, color: Colors.grey.withOpacity(0.3)),
+          const SizedBox(height: 24),
+          const Text(
+            'No Active Reservations',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'You don\'t have any active parking reservations at the moment.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey),
+          ),
+          const SizedBox(height: 32),
+          GradientButton(
+            text: 'Find Parking',
+            icon: Icons.search,
+            onPressed: () => context.go('/search'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+===== RESERVATION MODEL =====
+import 'package:smart_parking_user/data/models/parking_slot_model.dart';
+
+class ReservationModel {
+  final String id;
+  final String userId;
+  final String slotId;
+  final String parkingAreaId;
+  final DateTime startTime;
+  final DateTime endTime;
+  final DateTime? actualCheckIn;
+  final DateTime? actualCheckOut;
+  final String status;
+  final String? qrCode;
+  final double? totalAmount;
+  final ParkingSlotModel? slotDetails;
+  final String? areaName;
+
+  ReservationModel({
+    required this.id,
+    required this.userId,
+    required this.slotId,
+    required this.parkingAreaId,
+    required this.startTime,
+    required this.endTime,
+    this.actualCheckIn,
+    this.actualCheckOut,
+    required this.status,
+    this.qrCode,
+    this.totalAmount,
+    this.slotDetails,
+    this.areaName,
+  });
+
+  factory ReservationModel.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    final data = _unwrapData(json);
+
+    final startTime = _toDateTime(
+          data['start_time'] ?? data['startTime'],
+        ) ??
+        DateTime.now();
+
+    final rawSlot = data['slot'] ?? data['slot_details'];
+    ParkingSlotModel? slotDetails;
+
+    if (rawSlot is Map) {
+      slotDetails = ParkingSlotModel.fromJson(
+        Map<String, dynamic>.from(rawSlot),
+      );
+    }
+
+    return ReservationModel(
+      id: data['id']?.toString() ?? '',
+      userId: (data['user_id'] ?? data['userId'])?.toString() ?? '',
+      slotId: (data['slot_id'] ?? data['slotId'])?.toString() ?? '',
+      parkingAreaId:
+          (data['parking_area_id'] ?? data['parkingAreaId'])?.toString() ?? '',
+      startTime: startTime,
+      endTime: _toDateTime(
+            data['end_time'] ?? data['endTime'],
+          ) ??
+          startTime,
+      actualCheckIn: _toDateTime(
+        data['actual_check_in'] ?? data['actualCheckIn'],
+      ),
+      actualCheckOut: _toDateTime(
+        data['actual_check_out'] ?? data['actualCheckOut'],
+      ),
+      status: _normalizeStatus(data['status']),
+      qrCode: (data['qr_code'] ?? data['qrCode'])?.toString(),
+      totalAmount: _toNullableDouble(
+        data['total_amount'] ?? data['totalAmount'],
+      ),
+      slotDetails: slotDetails,
+      areaName:
+          (data['parking_area_name'] ?? data['area_name'] ?? data['areaName'])
+              ?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'user_id': userId,
+      'slot_id': slotId,
+      'parking_area_id': parkingAreaId,
+      'start_time': startTime.toIso8601String(),
+      'end_time': endTime.toIso8601String(),
+      'actual_check_in': actualCheckIn?.toIso8601String(),
+      'actual_check_out': actualCheckOut?.toIso8601String(),
+      'status': status,
+      'qr_code': qrCode,
+      'total_amount': totalAmount,
+      'slot': slotDetails?.toJson(),
+      'parking_area_name': areaName,
+    };
+  }
+
+  static Map<String, dynamic> _unwrapData(
+    Map<String, dynamic> json,
+  ) {
+    final nestedData = json['data'];
+
+    if (nestedData is Map) {
+      return Map<String, dynamic>.from(nestedData);
+    }
+
+    return json;
+  }
+
+  static DateTime? _toDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+
+    return DateTime.tryParse(value.toString());
+  }
+
+  static double? _toNullableDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is num) return value.toDouble();
+
+    return double.tryParse(value.toString());
+  }
+
+  static String _normalizeStatus(dynamic value) {
+    final status = value?.toString().trim();
+
+    if (status == null || status.isEmpty) {
+      return 'PENDING';
+    }
+
+    return status.split('.').last.toUpperCase();
+  }
+}
+===== RESERVATION GENERATED MODEL =====
+===== RESERVATION REPOSITORY =====
+import 'package:smart_parking_user/data/models/reservation_model.dart';
+import 'package:smart_parking_user/data/services/api_service.dart';
+
+class ReservationRepository {
+  final ApiService _apiService;
+
+  ReservationRepository(this._apiService);
+
+  Future<ReservationModel> createReservation(
+    String slotId,
+    String areaId,
+    DateTime startTime,
+    DateTime endTime,
+  ) async {
+    final response = await _apiService.post(
+      '/reservations/',
+      data: {
+        'slot_id': slotId,
+        'parking_area_id': areaId,
+        'start_time': startTime.toIso8601String(),
+        'end_time': endTime.toIso8601String(),
+      },
+    );
+
+    return ReservationModel.fromJson(
+      _extractMap(response, 'reservation'),
+    );
+  }
+
+  Future<List<ReservationModel>> getReservations({
+    String? status,
+  }) async {
+    final query = status == null
+        ? null
+        : <String, dynamic>{
+            'status': status,
+          };
+
+    final response = await _apiService.get(
+      '/reservations/',
+      queryParameters: query,
+    );
+
+    final items = _extractList(
+      response,
+      'reservations',
+    );
+
+    return items.map((item) {
+      if (item is! Map) {
+        throw AppException('Invalid reservation received');
+      }
+
+      return ReservationModel.fromJson(
+        Map<String, dynamic>.from(item),
+      );
+    }).toList();
+  }
+
+  Future<ReservationModel?> getActiveReservation() async {
+    final response = await _apiService.get(
+      '/reservations/active',
+    );
+
+    if (response == null) {
+      return null;
+    }
+
+    if (response is Map &&
+        response.containsKey('data') &&
+        response['data'] == null) {
+      return null;
+    }
+
+    return ReservationModel.fromJson(
+      _extractMap(response, 'active reservation'),
+    );
+  }
+
+  Future<ReservationModel> getReservationById(
+    String id,
+  ) async {
+    final response = await _apiService.get(
+      '/reservations/$id',
+    );
+
+    return ReservationModel.fromJson(
+      _extractMap(response, 'reservation'),
+    );
+  }
+
+  Future<ReservationModel> cancelReservation(
+    String id,
+  ) async {
+    final response = await _apiService.put(
+      '/reservations/$id/cancel',
+    );
+
+    return ReservationModel.fromJson(
+      _extractMap(response, 'reservation'),
+    );
+  }
+
+  Future<ReservationModel> checkIn(
+    String id,
+  ) async {
+    final response = await _apiService.put(
+      '/reservations/$id/check-in',
+    );
+
+    return ReservationModel.fromJson(
+      _extractMap(response, 'reservation'),
+    );
+  }
+
+  Future<ReservationModel> checkOut(
+    String id,
+  ) async {
+    final response = await _apiService.put(
+      '/reservations/$id/check-out',
+    );
+
+    return ReservationModel.fromJson(
+      _extractMap(response, 'reservation'),
+    );
+  }
+
+  List<dynamic> _extractList(
+    dynamic response,
+    String label,
+  ) {
+    if (response is List) {
+      return response;
+    }
+
+    if (response is Map) {
+      final data = response['data'];
+
+      if (data is List) {
+        return data;
+      }
+
+      final items = response['items'];
+
+      if (items is List) {
+        return items;
+      }
+    }
+
+    throw AppException('Invalid $label response from server');
+  }
+
+  Map<String, dynamic> _extractMap(
+    dynamic response,
+    String label,
+  ) {
+    if (response is Map) {
+      final data = response['data'];
+
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+
+      return Map<String, dynamic>.from(response);
+    }
+
+    throw AppException('Invalid $label response from server');
+  }
+}
+===== PARKING SLOT MODEL =====
+class ParkingSlotModel {
+  final String id;
+  final String slotId;
+  final String parkingAreaId;
+  final int floor;
+  final String slotType;
+  final String status;
+  final int positionX;
+  final int positionY;
+
+  ParkingSlotModel({
+    required this.id,
+    required this.slotId,
+    required this.parkingAreaId,
+    required this.floor,
+    required this.slotType,
+    required this.status,
+    required this.positionX,
+    required this.positionY,
+  });
+
+  factory ParkingSlotModel.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    final data = _unwrapData(json);
+
+    return ParkingSlotModel(
+      id: data['id']?.toString() ?? '',
+      slotId: (data['slot_id'] ?? data['slotId'])?.toString() ?? '',
+      parkingAreaId:
+          (data['parking_area_id'] ?? data['parkingAreaId'])?.toString() ?? '',
+      floor: _toInt(data['floor'], fallback: 1),
+      slotType: _normalizeEnum(
+        data['slot_type'] ?? data['slotType'],
+        fallback: 'STANDARD',
+      ),
+      status: _normalizeEnum(
+        data['status'],
+        fallback: 'VACANT',
+      ),
+      positionX: _toInt(
+        data['position_x'] ?? data['positionX'],
+      ),
+      positionY: _toInt(
+        data['position_y'] ?? data['positionY'],
+      ),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'slot_id': slotId,
+      'parking_area_id': parkingAreaId,
+      'floor': floor,
+      'slot_type': slotType,
+      'status': status,
+      'position_x': positionX,
+      'position_y': positionY,
+    };
+  }
+
+  static Map<String, dynamic> _unwrapData(
+    Map<String, dynamic> json,
+  ) {
+    final nestedData = json['data'];
+
+    if (nestedData is Map) {
+      return Map<String, dynamic>.from(nestedData);
+    }
+
+    return json;
+  }
+
+  static int _toInt(
+    dynamic value, {
+    int fallback = 0,
+  }) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+
+    return int.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  static String _normalizeEnum(
+    dynamic value, {
+    required String fallback,
+  }) {
+    final text = value?.toString().trim();
+
+    if (text == null || text.isEmpty) {
+      return fallback;
+    }
+
+    return text.split('.').last.toUpperCase();
+  }
+}

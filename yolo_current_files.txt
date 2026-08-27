@@ -1,0 +1,464 @@
+
+===== MAIN =====
+from fastapi import FastAPI
+from contextlib import asynccontextmanager
+import logging
+import asyncio
+
+from app.database import AsyncSessionLocal, init_db
+from app.utils.redis_client import redis_client
+from app.config import settings
+from app.middleware.cors import setup_cors
+from app.routers import auth_router, parking_router, reservation_router, admin_router, notification_router, payment_router, websocket_router
+from app.services.reservation_service import expire_pending_reservations
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+async def reservation_expiry_worker():
+    while True:
+        try:
+            async with AsyncSessionLocal() as db:
+                await expire_pending_reservations(db)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Failed to expire pending reservations")
+        await asyncio.sleep(30)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Initializing database...")
+    await init_db()
+    
+    logger.info("Connecting to Redis...")
+    await redis_client.connect(settings.REDIS_URL)
+
+    expiry_task = asyncio.create_task(reservation_expiry_worker())
+    
+    logger.info("Application startup complete.")
+    yield
+
+    expiry_task.cancel()
+    try:
+        await expiry_task
+    except asyncio.CancelledError:
+        pass
+
+    logger.info("Application shutdown.")
+
+app = FastAPI(title="AI Smart Parking System API", lifespan=lifespan)
+
+setup_cors(app)
+
+app.include_router(auth_router.router)
+app.include_router(parking_router.router)
+app.include_router(reservation_router.router)
+app.include_router(admin_router.router)
+app.include_router(notification_router.router)
+app.include_router(payment_router.router)
+app.include_router(websocket_router.router)
+
+@app.get("/")
+async def root():
+    return {"message": "Welcome to AI Smart Parking System API"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+===== CONFIG =====
+from typing import List
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Application settings."""
+
+    DATABASE_URL: str = (
+        "postgresql+asyncpg://parking_admin:"
+        "parking_secret_2024@localhost:5432/smart_parking"
+    )
+
+    REDIS_URL: str = "redis://localhost:6379"
+
+    SECRET_KEY: str = "supersecretkey"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    YOLO_MODEL_PATH: str = "yolo11n.pt"
+    YOLO_CONFIDENCE_THRESHOLD: float = 0.5
+    YOLO_IOU_THRESHOLD: float = 0.45
+
+    RESERVATION_TIMEOUT_MINUTES: int = 30
+
+    CORS_ORIGINS: List[str] = ["*"]
+
+    FIREBASE_CREDENTIALS_PATH: str | None = None
+
+    # Razorpay Test/Live credentials.
+    # Real values must only be stored in backend/.env.
+    RAZORPAY_KEY_ID: str = ""
+    RAZORPAY_KEY_SECRET: str = ""
+    RAZORPAY_CURRENCY: str = "INR"
+
+    # Razorpay requires the order amount in paise.
+    RAZORPAY_MINIMUM_AMOUNT_PAISE: int = 100
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+
+settings = Settings()===== YOLO SERVICE =====
+import numpy as np
+from typing import List, Dict, Any
+from dataclasses import dataclass
+
+@dataclass
+class Detection:
+    bbox: List[float] # [x1, y1, x2, y2]
+    class_name: str
+    confidence: float
+    track_id: int = -1
+
+class YOLOService:
+    """Stub for YOLOv11 Vehicle Detection"""
+    def __init__(self, model_path: str, confidence: float = 0.5, iou: float = 0.45):
+        self.model_path = model_path
+        self.confidence = confidence
+        self.iou = iou
+        self._is_loaded = True # Mocking loaded state
+
+    def detect(self, frame: np.ndarray) -> List[Detection]:
+        # Return mock detections for now
+        return []
+
+    def get_model_info(self) -> Dict[str, Any]:
+        return {
+            "model_path": self.model_path,
+            "confidence_threshold": self.confidence,
+            "iou_threshold": self.iou,
+            "loaded": self._is_loaded
+        }
+
+    @property
+    def is_loaded(self) -> bool:
+        return self._is_loaded
+===== DETECTOR =====
+import numpy as np
+from typing import List, Dict, Any
+
+class VehicleDetector:
+    def __init__(self):
+        self.model = None
+
+    def load_model(self, path: str):
+        print(f"Loading mock model from {path}")
+        self.model = True
+
+    def detect_vehicles(self, frame: np.ndarray) -> List[Dict[str, Any]]:
+        # Mock detection
+        return []
+
+    def draw_detections(self, frame: np.ndarray, detections: List[Dict[str, Any]]) -> np.ndarray:
+        return frame
+===== SLOT MAPPER =====
+from typing import List, Dict
+
+class SlotMapper:
+    def __init__(self):
+        self.slots = []
+
+    def define_slots(self, slot_regions: List[Dict]):
+        self.slots = slot_regions
+
+    def map_detections_to_slots(self, detections: List[Dict]) -> Dict[str, bool]:
+        # Mock: point in polygon
+        result = {}
+        for slot in self.slots:
+            result[slot["id"]] = False
+        return result
+===== PARKING ROUTER =====
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List, Optional
+from uuid import UUID
+from app.database import get_db
+from app.schemas.parking_schema import ParkingAreaResponse, ParkingSlotResponse, FloorSummary
+from app.services.parking_service import get_all_areas, get_area_by_id, get_slots_by_area, get_slot_by_id, get_area_summary
+
+router = APIRouter(prefix="/api/v1/parking", tags=["Parking"])
+
+@router.get("/areas", response_model=List[ParkingAreaResponse])
+async def list_areas(
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
+    radius: Optional[float] = None,
+    is_active: bool = True,
+    db: AsyncSession = Depends(get_db)
+):
+    areas = await get_all_areas(db, is_active)
+
+    responses = []
+
+    for area in areas:
+        slots = await get_slots_by_area(db, area.id)
+
+        available_slots = sum(
+            1 for slot in slots if slot.status == "VACANT"
+        )
+
+        occupied_slots = sum(
+            1 for slot in slots if slot.status == "OCCUPIED"
+        )
+
+        area_data = {
+            "id": area.id,
+            "name": area.name,
+            "address": area.address,
+            "latitude": area.latitude,
+            "longitude": area.longitude,
+            "total_floors": area.total_floors,
+            "total_slots": area.total_slots,
+            "hourly_rate": area.hourly_rate,
+            "currency": area.currency,
+            "image_url": area.image_url,
+            "is_active": area.is_active,
+            "opening_time": area.opening_time,
+            "closing_time": area.closing_time,
+            "created_at": area.created_at,
+            "updated_at": area.updated_at,
+            "available_slots": available_slots,
+            "occupied_slots": occupied_slots,
+        }
+
+        responses.append(area_data)
+
+    return responses
+
+@router.get("/areas/{area_id}", response_model=ParkingAreaResponse)
+async def get_area(area_id: UUID, db: AsyncSession = Depends(get_db)):
+    area = await get_area_by_id(db, area_id)
+    if not area:
+        raise HTTPException(status_code=404, detail="Area not found")
+    # You would compute available/occupied here
+    return area
+
+@router.get("/areas/{area_id}/slots", response_model=List[ParkingSlotResponse])
+async def get_slots(area_id: UUID, floor: Optional[int] = None, status: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    slots = await get_slots_by_area(db, area_id, floor)
+    if status:
+        slots = [s for s in slots if s.status == status]
+    return slots
+
+@router.get("/areas/{area_id}/summary", response_model=List[FloorSummary])
+async def get_summary(area_id: UUID, db: AsyncSession = Depends(get_db)):
+    summary = await get_area_summary(db, area_id)
+    return summary
+
+@router.get("/slots/{slot_id}", response_model=ParkingSlotResponse)
+async def get_slot(slot_id: UUID, db: AsyncSession = Depends(get_db)):
+    slot = await get_slot_by_id(db, slot_id)
+    if not slot:
+        raise HTTPException(status_code=404, detail="Slot not found")
+    return slot
+===== PARKING SERVICE =====
+from typing import List, Dict, Any, Optional
+from uuid import UUID
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, update, delete, case
+from app.models.parking_area import ParkingArea
+from app.models.parking_slot import ParkingSlot
+from app.schemas.parking_schema import ParkingAreaCreate, ParkingAreaUpdate, ParkingSlotCreate
+
+async def get_all_areas(db: AsyncSession, is_active: Optional[bool] = True) -> List[ParkingArea]:
+    query = select(ParkingArea)
+    if is_active is not None:
+        query = query.filter(ParkingArea.is_active == is_active)
+    query = query.order_by(ParkingArea.name)
+    result = await db.execute(query)
+    return list(result.scalars().all())
+
+async def get_area_by_id(db: AsyncSession, area_id: UUID) -> Optional[ParkingArea]:
+    result = await db.execute(select(ParkingArea).filter(ParkingArea.id == area_id))
+    return result.scalars().first()
+
+async def create_area(db: AsyncSession, area_data: ParkingAreaCreate) -> ParkingArea:
+    new_area = ParkingArea(**area_data.model_dump())
+    db.add(new_area)
+    await db.commit()
+    await db.refresh(new_area)
+    return new_area
+
+async def update_area(db: AsyncSession, area_id: UUID, data: ParkingAreaUpdate) -> Optional[ParkingArea]:
+    area = await get_area_by_id(db, area_id)
+    if not area:
+        return None
+    for key, value in data.model_dump(exclude_unset=True).items():
+        setattr(area, key, value)
+    await db.commit()
+    await db.refresh(area)
+    return area
+
+async def delete_area(db: AsyncSession, area_id: UUID):
+    area = await get_area_by_id(db, area_id)
+    if area:
+        await db.delete(area)
+        await db.commit()
+
+async def get_slots_by_area(db: AsyncSession, area_id: UUID, floor: Optional[int] = None) -> List[ParkingSlot]:
+    query = select(ParkingSlot).filter(ParkingSlot.parking_area_id == area_id)
+    if floor is not None:
+        query = query.filter(ParkingSlot.floor == floor)
+    result = await db.execute(query)
+    return list(result.scalars().all())
+
+async def get_slot_by_id(db: AsyncSession, slot_id: UUID) -> Optional[ParkingSlot]:
+    result = await db.execute(select(ParkingSlot).filter(ParkingSlot.id == slot_id))
+    return result.scalars().first()
+
+async def create_slot(db: AsyncSession, slot_data: ParkingSlotCreate) -> ParkingSlot:
+    new_slot = ParkingSlot(**slot_data.model_dump())
+    db.add(new_slot)
+    await db.commit()
+    await db.refresh(new_slot)
+    return new_slot
+
+async def update_slot_status(db: AsyncSession, slot_id: UUID, status: str) -> Optional[ParkingSlot]:
+    slot = await get_slot_by_id(db, slot_id)
+    if not slot:
+        return None
+    slot.status = status
+    await db.commit()
+    await db.refresh(slot)
+    return slot
+
+async def get_area_summary(db: AsyncSession, area_id: UUID) -> List[Dict[str, Any]]:
+    query = (
+        select(
+            ParkingSlot.floor,
+            func.count(ParkingSlot.id).label("total"),
+            func.sum(
+                case(
+                    (ParkingSlot.status == "VACANT", 1),
+                    else_=0
+                )
+            ).label("vacant"),
+            func.sum(
+                case(
+                    (ParkingSlot.status == "OCCUPIED", 1),
+                    else_=0
+                )
+            ).label("occupied"),
+            func.sum(
+                case(
+                    (ParkingSlot.status == "RESERVED", 1),
+                    else_=0
+                )
+            ).label("reserved"),
+        )
+        .where(ParkingSlot.parking_area_id == area_id)
+        .group_by(ParkingSlot.floor)
+        .order_by(ParkingSlot.floor)
+    )
+
+    result = await db.execute(query)
+
+    summary = []
+
+    for row in result:
+        summary.append({
+            "floor": row.floor,
+            "total": row.total,
+            "vacant": row.vacant or 0,
+            "occupied": row.occupied or 0,
+            "reserved": row.reserved or 0,
+        })
+
+    return summary
+async def bulk_create_slots(db: AsyncSession, area_id: UUID, floor: int, prefix: str, count: int) -> List[ParkingSlot]:
+    slots = []
+    for i in range(1, count + 1):
+        slot_id = f"{prefix}{i:02d}"
+        new_slot = ParkingSlot(
+            slot_id=slot_id,
+            parking_area_id=area_id,
+            floor=floor,
+            slot_type="STANDARD"
+        )
+        db.add(new_slot)
+        slots.append(new_slot)
+    await db.commit()
+    for slot in slots:
+        await db.refresh(slot)
+    return slots
+===== PARKING MODEL =====
+===== WEBSOCKET ROUTER =====
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from typing import Dict, List
+import logging
+import asyncio
+
+router = APIRouter(tags=["WebSocket"])
+logger = logging.getLogger(__name__)
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+
+    async def connect(self, area_id: str, websocket: WebSocket):
+        await websocket.accept()
+        if area_id not in self.active_connections:
+            self.active_connections[area_id] = []
+        self.active_connections[area_id].append(websocket)
+        logger.info(f"Client connected to area {area_id}. Total: {len(self.active_connections[area_id])}")
+
+    def disconnect(self, area_id: str, websocket: WebSocket):
+        if area_id in self.active_connections:
+            self.active_connections[area_id].remove(websocket)
+            logger.info(f"Client disconnected from area {area_id}.")
+
+    async def broadcast_slot_update(self, area_id: str, slot_data: dict):
+        if area_id in self.active_connections:
+            for connection in self.active_connections[area_id]:
+                try:
+                    await connection.send_json(slot_data)
+                except Exception as e:
+                    logger.error(f"Failed to send to websocket: {e}")
+
+manager = ConnectionManager()
+
+@router.websocket("/ws/parking/{area_id}")
+async def websocket_endpoint(websocket: WebSocket, area_id: str):
+    await manager.connect(area_id, websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        manager.disconnect(area_id, websocket)
+===== REQUIREMENTS =====
+fastapi[standard]>=0.115.0
+uvicorn[standard]>=0.30.0
+sqlalchemy[asyncio]>=2.0.0
+asyncpg>=0.30.0
+alembic>=1.14.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-jose[cryptography]>=3.3.0
+bcrypt>=4.1.0
+redis>=5.0.0
+python-multipart>=0.0.9
+email-validator>=2.0.0
+qrcode>=8.0
+Pillow>=10.0.0
+ultralytics>=8.3.0
+opencv-python-headless>=4.10.0
+numpy>=1.26.0
+razorpay==2.0.1
