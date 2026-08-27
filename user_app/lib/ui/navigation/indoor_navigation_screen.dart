@@ -105,7 +105,7 @@ class _IndoorNavigationScreenState
               onPressed: _viewBookingStatus,
             ),
             const SizedBox(height: 12),
-            const Row(
+            Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
