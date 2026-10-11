@@ -1,0 +1,36 @@
+# Environment variables and secrets
+.env
+**/.env
+*.pem
+*.key
+
+# Python
+**/.venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Flutter and Dart
+**/.dart_tool/
+**/build/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/coverage/
+
+# Editors
+.vscode/
+.idea/
+*.iml
+
+# Generated datasets, models and videos
+**/runs/
+**/datasets/
+*.mp4
+*.avi
+*.mov
+*.pt
+
+# Operating system
+Thumbs.db
+.DS_Store
